@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Buraco Negro 3D</title>
+<style>
+  :root { --bg: #05060a; --fg: #e8eaf0; --panel: rgba(16, 18, 26, 0.86); --line: #333845; --accent: #7aa7ff; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
+  #gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+  #gl:active { cursor: grabbing; }
+  #painel { position: fixed; top: 12px; left: 12px; width: min(320px, calc(100% - 24px));
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px;
+    font-size: .88rem; line-height: 1.45; backdrop-filter: blur(6px); }
+  #painel h1 { font-size: 1.05rem; margin: 0 0 8px; }
+  #painel label { display: block; margin: 8px 0 2px; }
+  #painel input[type=range] { width: 100%; }
+  #painel .check { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  #painel .valor { float: right; opacity: .7; }
+  #painel .notas { margin-top: 10px; opacity: .75; font-size: .8rem; }
+  #painel button { margin-top: 8px; background: transparent; color: var(--accent); border: 1px solid var(--accent);
+    border-radius: 8px; padding: 4px 10px; cursor: pointer; }
+  #painel button:hover { background: var(--accent); color: var(--bg); }
+  #status { position: fixed; bottom: 10px; right: 12px; font-size: .75rem; opacity: .6; }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<div id="painel">
+  <h1>Buraco negro com rotação (spin)</h1>
+  <label>Ângulo de visão <span class="valor" id="v-pitch"></span></label>
+  <input type="range" id="pitch" min="-10" max="85" step="0.5" value="12">
+  <label>Distância do observador (unidades de M) <span class="valor" id="v-dist"></span></label>
+  <input type="range" id="dist" min="10" max="80" step="0.5" value="40">
+  <label>Spin do buraco negro, a/M <span class="valor" id="v-spin"></span></label>
+  <input type="range" id="spin" min="0" max="0.998" step="0.01" value="0.6">
+  <div class="check"><input type="checkbox" id="disco" checked><label for="disco" style="margin:0">Disco de acreção</label></div>
+  <div class="check"><input type="checkbox" id="doppler" checked><label for="doppler" style="margin:0">Doppler e beaming relativísticos</label></div>
+  <button id="reset">Restaurar vista</button>
+  <div class="notas">
+    Arraste para girar a câmera e use a roda do mouse para se aproximar ou afastar.<br>
+    Com spin a/M: horizonte r₊ = M+√(M²−a²) e ISCO prógrado seguem as fórmulas exatas de Kerr; ambos encolhem conforme o spin aumenta.<br>
+    O arrasto de referenciais (Lense–Thirring) é uma aproximação visual: a geodésica usa a equação de Schwarzschild e depois sofre uma torção extra em torno do eixo de spin, proporcional a a/r³. Não é a métrica de Kerr completa.<br>
+    A velocidade do gás no disco usa a velocidade angular kepleriana exata Ω = √M/(r^1.5 + a), prógrada.
+  </div>
+</div>
+<div id="status"></div>
+
+<script>
+// ---------- Shaders ----------
+const VERT = `
+attribute vec2 aPos;
+void main() { gl_Position = vec4(aPos, 0.0, 1.0); }
+`;
+
+const FRAG = `
+precision highp float;
+
+uniform vec2  uRes;
+uniform vec3  uC;     // direção do buraco negro até a câmera
+uniform vec3  uRt;    // eixo "direita" da câmera
+uniform vec3  uUp;    // eixo "cima" da câmera
+uniform float uDist;  // distância da câmera (em M)
+uniform float uTan;   // tan(campo de visão / 2)
+uniform float uDisk;  // 1 = disco ligado
+uniform float uDopp;  // 1 = Doppler e beaming ligados
+uniform float uSpin;  // spin a/M (0 = Schwarzschild)
+uniform float uRin;   // raio do ISCO, depende do spin
+uniform float uRh;    // raio do horizonte, depende do spin
+
+const float M    = 1.0;
+const float ROUT = 24.0;   // borda externa do disco
+const float TREF = 6000.0; // temperatura de referência em R_IN (K)
+const float PASSO = 0.02;
+const int   MAXP  = 900;
+
+// Rotação em torno do eixo de spin (y) — aproxima o arrasto de referenciais
+vec3 rotY(vec3 v, float a) {
+  float c = cos(a), s = sin(a);
+  return vec3(c * v.x + s * v.z, v.y, -s * v.x + c * v.z);
+}
+
+// Ruído em valor, para dar textura turbulenta ao disco
+float hash21(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+float noise2(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  float a = hash21(i), b = hash21(i + vec2(1.0, 0.0));
+  float c = hash21(i + vec2(0.0, 1.0)), d = hash21(i + vec2(1.0, 1.0));
+  vec2 w = f * f * (3.0 - 2.0 * f);
+  return mix(mix(a, b, w.x), mix(c, d, w.x), w.y);
+}
+float fbm(vec2 p) {
+  float v = 0.0, amp = 0.5;
+  for (int i = 0; i < 4; i++) { v += amp * noise2(p); p *= 2.02; amp *= 0.5; }
+  return v;
+}
+
+// Cor de corpo negro (aproximação de Tanner Helland), normalizada
+vec3 blackbody(float T) {
+  float t = clamp(T, 1000.0, 40000.0) / 100.0;
+  float r = t <= 66.0 ? 1.0 : clamp(329.698727 * pow(max(t - 60.0, 1.0), -0.1332047592) / 255.0, 0.0, 1.0);
+  float g = t <= 66.0
+    ? clamp((99.4708025 * log(max(t, 1.0)) - 161.1195681) / 255.0, 0.0, 1.0)
+    : clamp(288.1221695 * pow(max(t - 60.0, 1.0), -0.0755148492) / 255.0, 0.0, 1.0);
+  float b = t >= 66.0 ? 1.0 : (t <= 19.0 ? 0.0 : clamp((138.5177312 * log(max(t - 10.0, 1.0)) - 305.0447927) / 255.0, 0.0, 1.0));
+  return vec3(r, g, b);
+}
+
+void main() {
+  vec2 uv = (gl_FragCoord.xy / uRes) * 2.0 - 1.0;
+  uv.x *= uRes.x / uRes.y;
+
+  // Direção do raio que sai da câmera (traçado para trás no tempo)
+  vec3 f = -uC;
+  vec3 d = normalize(f + uTan * (uv.x * uRt + uv.y * uUp));
+
+  // Constantes da geodésica: impacto b = R_obs · |tangencial|
+  float cc = dot(d, uC);
+  vec3  tv = d - cc * uC;
+  float tn = max(length(tv), 1e-5);
+  vec3  e2 = tv / tn;                     // direção de φ crescente no plano da órbita
+
+  float u   = 1.0 / uDist;
+  float du  = -cc / (uDist * tn);         // du/dφ inicial
+  float phi = 0.0;
+  float twist = 0.0;                      // precessão tipo Lense–Thirring (aproximação)
+  float zprev = uDist * uC.y;             // altura do disco (normal = y)
+  float rprev = uDist;
+
+  vec3  col = vec3(0.0);
+  float status = 0.0;                     // 0 = ativo, 1 = capturado, 2 = escapou, 3 = disco
+
+  for (int i = 0; i < MAXP; i++) {
+    // RK4 em φ para u'' = -u + 3 M u²
+    float h = PASSO;
+    float a1u = du,            a1d = -u + 3.0 * M * u * u;
+    float u2  = u + 0.5 * h * a1u, d2 = du + 0.5 * h * a1d;
+    float a2u = d2,            a2d = -u2 + 3.0 * M * u2 * u2;
+    float u3  = u + 0.5 * h * a2u, d3 = du + 0.5 * h * a2d;
+    float a3u = d3,            a3d = -u3 + 3.0 * M * u3 * u3;
+    float u4  = u + h * a3u,   d4 = du + h * a3d;
+    float a4u = d4,            a4d = -u4 + 3.0 * M * u4 * u4;
+    u  += h / 6.0 * (a1u + 2.0 * a2u + 2.0 * a3u + a4u);
+    du += h / 6.0 * (a1d + 2.0 * a2d + 2.0 * a3d + a4d);
+    phi += h;
+    twist += h * 2.0 * uSpin * M * u * u * u;   // dψ/dφ ≈ 2 a M u³ (aproximação equatorial)
+
+    float r = 1.0 / max(u, 1e-6);
+    vec3 Pflat = r * (cos(phi) * uC + sin(phi) * e2);
+    vec3 P = rotY(Pflat, twist);
+    float z = P.y;
+
+    // Cruzamento do plano do disco
+    if (uDisk > 0.5 && zprev * z < 0.0) {
+      float frac = zprev / (zprev - z);
+      float rh = rprev + frac * (r - rprev);
+      if (rh >= uRin && rh <= ROUT) {
+        float ph = phi - h + frac * h;
+        vec3 Phflat = rh * (cos(ph) * uC + sin(ph) * e2);
+        vec3 Ph = rotY(Phflat, twist);
+        float drdphi = -du / max(u * u, 1e-8);
+        vec3 Tvflat = drdphi * (cos(ph) * uC + sin(ph) * e2)
+                    + rh * (-sin(ph) * uC + cos(ph) * e2);
+        vec3 Tv = rotY(Tvflat, twist);
+        vec3 k = -normalize(Tv);          // direção física da luz (emissor -> câmera)
+
+        // Gás em órbita circular equatorial, velocidade angular kepleriana de Kerr (prógrada)
+        float phiD = atan(Ph.z, Ph.x);
+        float Omega = 1.0 / (pow(rh, 1.5) + uSpin);
+        float v = clamp(Omega * rh, 0.0, 0.999);
+        vec3 vel = v * vec3(-sin(phiD), 0.0, cos(phiD));
+        float gam = 1.0 / sqrt(1.0 - v * v);
+
+        float dop = uDopp > 0.5 ? 1.0 / (gam * (1.0 - dot(vel, k))) : 1.0;
+        float grav = sqrt(max(1.0 - 2.0 * M / rh, 1e-4)) / sqrt(max(1.0 - 2.0 * M / uDist, 1e-4));
+        float g = grav * dop;                    // fator de redshift total
+
+        float Tem = TREF * pow(rh / uRin, -0.75);  // T ∝ r^(-3/4)
+        float I = pow(g, 4.0) * pow(rh / uRin, -3.0); // beaming: I_obs ∝ g⁴
+        float tex = 0.65 + 0.7 * fbm(vec2(rh * 0.9, phiD * 3.0 + rh * 0.15)); // turbulência
+
+        col = blackbody(g * Tem) * (1.0 - exp(-2.2 * I * tex));
+        status = 3.0;
+        break;
+      }
+    }
+    zprev = z;
+    rprev = r;
+
+    if (r < uRh * 1.03) { status = 1.0; break; }             // horizonte: captura
+    if (r > 60.0 && du < 0.0) { status = 2.0; break; }       // escape ao infinito
+  }
+
+  if (status == 2.0 || status == 0.0) {
+    // Fundo estrelado: direção final da luz
+    float r = 1.0 / max(u, 1e-6);
+    float drdphi = -du / max(u * u, 1e-8);
+    vec3 Tfflat = normalize(drdphi * (cos(phi) * uC + sin(phi) * e2)
+                          + r * (-sin(phi) * uC + cos(phi) * e2));
+    vec3 Tf = rotY(Tfflat, twist);
+    vec3 key = floor(Tf * 150.0);
+    float hsh = fract(sin(dot(key, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+    float star = step(0.996, hsh) * (hsh - 0.996) / 0.004;
+    col = (vec3(star) + 0.01) * vec3(0.8, 0.9, 1.0);
+  }
+
+  // Mapeamento tonal (Reinhard) + correção gama, para um visual mais cinematográfico
+  col = col / (1.0 + col);
+  col = pow(clamp(col, 0.0, 1.0), vec3(1.0 / 2.2));
+
+  gl_FragColor = vec4(col, 1.0);
+}
+`;
+
+// ---------- WebGL ----------
+const canvas = document.getElementById('gl');
+const gl = canvas.getContext('webgl', { antialias: false, preserveDrawingBuffer: false });
+
+function compilar(tipo, fonte) {
+  const s = gl.createShader(tipo);
+  gl.shaderSource(s, fonte);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    throw new Error(gl.getShaderInfoLog(s));
+  }
+  return s;
+}
+
+const programa = gl.createProgram();
+gl.attachShader(programa, compilar(gl.VERTEX_SHADER, VERT));
+gl.attachShader(programa, compilar(gl.FRAGMENT_SHADER, FRAG));
+gl.linkProgram(programa);
+if (!gl.getProgramParameter(programa, gl.LINK_STATUS)) {
+  throw new Error(gl.getProgramInfoLog(programa));
+}
+gl.useProgram(programa);
+
+const buffer = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+const aPos = gl.getAttribLocation(programa, 'aPos');
+gl.enableVertexAttribArray(aPos);
+gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+const U = {};
+['uRes', 'uC', 'uRt', 'uUp', 'uDist', 'uTan', 'uDisk', 'uDopp', 'uSpin', 'uRin', 'uRh'].forEach(n => {
+  U[n] = gl.getUniformLocation(programa, n);
+});
+
+// Fórmulas exatas de Kerr (órbita equatorial prógrada) para o ISCO e o horizonte,
+// em função do spin a/M. O resto do arrasto de referenciais é aproximado no shader.
+function kerrISCO(a) {
+  const Z1 = 1 + Math.cbrt(1 - a * a) * (Math.cbrt(1 + a) + Math.cbrt(1 - a));
+  const Z2 = Math.sqrt(3 * a * a + Z1 * Z1);
+  return 3 + Z2 - Math.sqrt((3 - Z1) * (3 + Z1 + 2 * Z2));
+}
+function kerrHorizonR(a) {
+  return 1 + Math.sqrt(Math.max(1 - a * a, 0));
+}
+
+// ---------- Estado da câmera e interface ----------
+const painel = {
+  pitch: document.getElementById('pitch'),
+  dist: document.getElementById('dist'),
+  spin: document.getElementById('spin'),
+  disco: document.getElementById('disco'),
+  doppler: document.getElementById('doppler'),
+};
+const estado = { yaw: 0.0, pitch: 12 * Math.PI / 180, dist: 40, spin: 0.6, qualidade: 0.8 };
+let lastRin = 6, lastRh = 2;
+let sujo = true;
+let arrastando = false;
+let ultimoX = 0, ultimoY = 0;
+const statusEl = document.getElementById('status');
+
+function atualizarRotulos() {
+  document.getElementById('v-pitch').textContent = (estado.pitch * 180 / Math.PI).toFixed(1) + '°';
+  document.getElementById('v-dist').textContent = estado.dist.toFixed(1) + ' M';
+  document.getElementById('v-spin').textContent = estado.spin.toFixed(2);
+}
+
+function sincronizarSliders() {
+  painel.pitch.value = estado.pitch * 180 / Math.PI;
+  painel.dist.value = estado.dist;
+  painel.spin.value = estado.spin;
+  atualizarRotulos();
+}
+
+function redimensionar() {
+  const w = Math.max(1, Math.floor(canvas.clientWidth * estado.qualidade));
+  const h = Math.max(1, Math.floor(canvas.clientHeight * estado.qualidade));
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+    gl.viewport(0, 0, w, h);
+  }
+  sujo = true;
+}
+
+function desenhar() {
+  const cp = Math.cos(estado.pitch), sp = Math.sin(estado.pitch);
+  const c = [cp * Math.sin(estado.yaw), sp, cp * Math.cos(estado.yaw)];  // BH -> câmera
+  const f = [-c[0], -c[1], -c[2]];
+  const up0 = [0, 1, 0];
+  let rt = [f[1] * up0[2] - f[2] * up0[1], f[2] * up0[0] - f[0] * up0[2], f[0] * up0[1] - f[1] * up0[0]];
+  const nr = Math.hypot(...rt);
+  rt = rt.map(v => v / nr);
+  let up = [rt[1] * f[2] - rt[2] * f[1], rt[2] * f[0] - rt[0] * f[2], rt[0] * f[1] - rt[1] * f[0]];
+  const nu = Math.hypot(...up);
+  up = up.map(v => v / nu);
+
+  const rin = kerrISCO(estado.spin);
+  const rh  = kerrHorizonR(estado.spin);
+  lastRin = rin;
+  lastRh = rh;
+
+  gl.uniform2f(U.uRes, canvas.width, canvas.height);
+  gl.uniform3f(U.uC, c[0], c[1], c[2]);
+  gl.uniform3f(U.uRt, rt[0], rt[1], rt[2]);
+  gl.uniform3f(U.uUp, up[0], up[1], up[2]);
+  gl.uniform1f(U.uDist, estado.dist);
+  gl.uniform1f(U.uTan, Math.tan(Math.PI / 9)); // campo de visão de 40°
+  gl.uniform1f(U.uDisk, painel.disco.checked ? 1 : 0);
+  gl.uniform1f(U.uDopp, painel.doppler.checked ? 1 : 0);
+  gl.uniform1f(U.uSpin, estado.spin);
+  gl.uniform1f(U.uRin, rin);
+  gl.uniform1f(U.uRh, rh);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  sujo = false;
+}
+
+function laco() {
+  if (sujo) {
+    const t0 = performance.now();
+    desenhar();
+    gl.finish();
+    const ms = performance.now() - t0;
+    statusEl.textContent = `${canvas.width}×${canvas.height} · ${ms.toFixed(0)} ms · ISCO ${lastRin.toFixed(2)}M · horizonte ${lastRh.toFixed(2)}M`;
+  }
+  requestAnimationFrame(laco);
+}
+
+// Arrastar para girar
+canvas.addEventListener('pointerdown', e => {
+  arrastando = true;
+  ultimoX = e.clientX;
+  ultimoY = e.clientY;
+  canvas.setPointerCapture(e.pointerId);
+  estado.qualidade = 0.4;
+  redimensionar();
+});
+canvas.addEventListener('pointermove', e => {
+  if (!arrastando) return;
+  estado.yaw -= (e.clientX - ultimoX) * 0.005;
+  estado.pitch = Math.min(Math.max(estado.pitch + (e.clientY - ultimoY) * 0.005, -10 * Math.PI / 180), 85 * Math.PI / 180);
+  ultimoX = e.clientX;
+  ultimoY = e.clientY;
+  sincronizarSliders();
+  sujo = true;
+});
+function soltar() {
+  if (!arrastando) return;
+  arrastando = false;
+  estado.qualidade = 0.8;
+  redimensionar();
+}
+canvas.addEventListener('pointerup', soltar);
+canvas.addEventListener('pointercancel', soltar);
+
+// Roda do mouse para zoom
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  estado.dist = Math.min(Math.max(estado.dist * (1 + e.deltaY * 0.001), 10), 80);
+  sincronizarSliders();
+  sujo = true;
+}, { passive: false });
+
+// Controles
+painel.pitch.addEventListener('input', () => {
+  estado.pitch = painel.pitch.value * Math.PI / 180;
+  atualizarRotulos();
+  sujo = true;
+});
+painel.dist.addEventListener('input', () => {
+  estado.dist = Number(painel.dist.value);
+  atualizarRotulos();
+  sujo = true;
+});
+painel.spin.addEventListener('input', () => {
+  estado.spin = Number(painel.spin.value);
+  atualizarRotulos();
+  sujo = true;
+});
+painel.disco.addEventListener('change', () => { sujo = true; });
+painel.doppler.addEventListener('change', () => { sujo = true; });
+
+document.getElementById('reset').addEventListener('click', () => {
+  estado.yaw = 0;
+  estado.pitch = 12 * Math.PI / 180;
+  estado.dist = 40;
+  estado.spin = 0.6;
+  sincronizarSliders();
+  sujo = true;
+});
+
+window.addEventListener('resize', redimensionar);
+
+// ---------- Início ----------
+atualizarRotulos();
+redimensionar();
+requestAnimationFrame(laco);
+</script>
+</body>
+</html>
