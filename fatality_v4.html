@@ -1,0 +1,393 @@
+
+<!DOCTYPE html>
+
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fatality</title>
+<style>
+:root{--bg:#0d1117;--bg2:#161b22;--bg3:#1c2128;--bg4:#21262d;--red:#e8003a;--redlt:#ff1a4e;--reddim:#3d0010;--white:#e6edf3;--grey:#8b949e;--dim:#30363d;--blue:#58a6ff;--green:#3fb950;--yellow:#d29922;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*,*:before,*:after{box-sizing:inherit}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--white);font:14px "Courier New",ui-monospace,monospace;display:grid;grid-template-rows:auto 1fr auto;overflow:hidden}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none}
+:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+.top{display:flex;align-items:center;background:var(--bg2);border:1px solid var(--dim);flex-wrap:wrap}
+.logo{font-weight:700;font-size:17px;padding:10px 20px 10px 14px}
+.tabs{display:flex;overflow-x:auto}
+.tab{padding:12px 14px;font-weight:700;font-size:12px;color:var(--grey);background:var(--bg2);white-space:nowrap}
+.tab.on{background:var(--bg3);color:var(--white);box-shadow:inset 0 -2px var(--red)}
+.tab:hover{color:var(--white)}
+.info{margin-left:auto;padding:0 16px;color:var(--grey);font-size:12px}
+.info b{color:var(--white);margin-left:10px}
+main{position:relative;min-height:0}
+.panel{display:none;height:100%;overflow:auto}
+.panel.on{display:block}
+#p-CHAT.on{display:grid;grid-template-columns:180px 1fr;overflow:hidden}
+.side{background:var(--bg2);border-right:1px solid var(--dim);display:flex;flex-direction:column;overflow:auto}
+.side h4{margin:14px 10px 6px;color:var(--red);font-size:11px}
+.sc{text-align:left;padding:8px 10px;color:var(--grey);border-left:3px solid transparent;font-size:12px}
+.sc:hover{background:var(--bg3);color:var(--white);border-left-color:var(--red)}
+.side hr,.hr{border:0;border-top:1px solid var(--dim);margin:10px 0;width:100%}
+#status{margin-top:auto;padding:10px;text-align:center;font-size:11px;color:var(--green)}
+.chatcol{display:grid;grid-template-rows:1fr auto;min-height:0}
+#chat{background:var(--bg2);padding:14px 18px;overflow:auto}
+.m{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5}
+.m.hora{color:var(--grey);font-size:11px;margin-top:12px}
+.m.user{color:var(--redlt);font-weight:700}
+.m.action{color:var(--blue);font-style:italic}
+.m.warn{color:var(--yellow)}.m.error{color:var(--red)}.m.dim{color:var(--dim)}.m.voz{color:var(--green);font-style:italic}
+.inp{display:flex;align-items:center;gap:4px;background:var(--bg4);border:1px solid var(--dim);padding:5px 6px;margin-top:1px}
+.inp:focus-within,.sbox:focus-within{border-color:var(--red)}
+.inp input,.sbox input{flex:1;min-width:0;background:none;border:0;outline:0;padding:8px 8px;font-size:15px}
+.btn{background:var(--red);font-weight:700;padding:10px 18px}
+.btn:hover{background:var(--redlt)}
+.btn:disabled{opacity:.6;cursor:default}
+.ghost{background:var(--bg4);padding:8px 14px}
+.ghost:hover{background:var(--reddim);color:var(--redlt)}
+#voz{background:var(--bg3);padding:8px 10px;font-size:16px}
+#voz.rec{background:var(--reddim)}
+.cols{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:8px}
+.col{background:var(--bg2);border:1px solid var(--dim);padding-bottom:12px}
+.col h3,.box h3{margin:0;padding:12px;color:var(--red);font-size:14px;border-bottom:1px solid var(--dim);margin-bottom:8px}
+.row{display:flex;align-items:center;gap:8px;padding:5px 12px}
+.row span{flex:1;color:var(--white)}
+.row select{background:var(--bg4);border:0;padding:5px}
+.row input[type=range]{accent-color:var(--red);width:100px}
+.row b{background:var(--reddim);color:var(--redlt);padding:1px 6px;min-width:52px;text-align:center;font-size:12px}
+.desc{margin:0;padding:0 12px 4px;color:var(--grey);font-size:11px}
+.tg{position:relative;width:36px;height:18px;flex:none}
+.tg input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer;z-index:1}
+.tg i{position:absolute;inset:0;border-radius:9px;background:var(--dim);transition:background .15s}
+.tg i:after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--white);transition:transform .15s}
+.tg input:checked+i{background:var(--red)}
+.tg input:checked+i:after{transform:translateX(18px)}
+.tg input:focus-visible+i{outline:2px solid var(--blue)}
+.box{background:var(--bg3);margin:20px auto;width:min(92%,400px);padding:12px}
+.box.c{width:min(92%,320px)}
+.cd{background:var(--bg4);padding:6px 10px;text-align:right}
+#ce{color:var(--grey);font-size:11px;min-height:15px}
+#cr{font-size:26px;font-weight:700;overflow:auto}
+.keys{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:8px}
+.keys button{background:var(--bg4);padding:14px 0;font-weight:700;font-size:16px}
+.keys .f{background:var(--bg2)}.keys .o{background:var(--reddim)}.keys .e{background:var(--red)}
+.keys button:hover{background:var(--redlt)}
+.sbox{display:flex;background:var(--bg4);border:1px solid var(--dim);padding:4px;margin-bottom:10px}
+.eng{display:flex;gap:8px;align-items:center;padding:6px 8px}
+.eng input{accent-color:var(--red)}
+.cfg{max-width:640px;margin:20px auto;padding:0 20px}
+.cfg h3{color:var(--red);margin:0 0 14px}
+.cfg p{color:var(--grey);margin:4px 0}
+.bot{display:flex;justify-content:space-between;background:var(--bg2);border:1px solid var(--dim);padding:5px 12px;color:var(--grey);font-size:11px}
+@media(max-width:760px){
+ #p-CHAT.on{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+ .side{flex-direction:row;border-right:0;border-bottom:1px solid var(--dim)}
+ .side h4,.side hr,#status{display:none}.sc{white-space:nowrap;border-left:0}
+ .cols{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="logo">FATALITY</div>
+  <nav class="tabs" id="tabs">
+    <button class="tab" data-t="CHAT">💬 CHAT</button>
+    <button class="tab" data-t="FUNCOES">🔧 FUNÇÕES</button>
+    <button class="tab" data-t="CALC">🧮 CALC</button>
+    <button class="tab" data-t="PESQUISA">🔍 PESQUISA</button>
+    <button class="tab" data-t="CONFIG">⚙ CONFIG</button>
+  </nav>
+  <div class="info">Groq<b id="dt"></b></div>
+</header>
+
+<main>
+  <section class="panel" id="p-CHAT">
+    <aside class="side" id="side">
+      <h4>ATALHOS</h4>
+    </aside>
+    <div class="chatcol">
+      <div id="chat" aria-live="polite"></div>
+      <div class="inp">
+        <input id="msg" placeholder="Fale ou digite…" autocomplete="off" aria-label="Mensagem">
+        <button id="voz" title="Entrada por voz" aria-label="Entrada por voz">🎤</button>
+        <button class="btn" id="send">ENVIAR</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="p-FUNCOES"><div class="cols" id="cols"></div></section>
+
+  <section class="panel" id="p-CALC">
+    <div class="box c">
+      <div class="cd"><div id="ce"></div><div id="cr">0</div></div>
+      <div class="keys" id="keys"></div>
+    </div>
+  </section>
+
+  <section class="panel" id="p-PESQUISA">
+    <div class="box">
+      <h3>PESQUISA RÁPIDA</h3>
+      <div class="sbox"><input id="q" placeholder="O que você procura?" aria-label="Pesquisa"><button class="btn" id="go" aria-label="Pesquisar">↵</button></div>
+      <div style="color:var(--grey);font-size:11px;margin:4px 0">Motor de busca:</div>
+      <div id="engs"></div>
+      <button class="btn" id="go2" style="width:100%;margin-top:14px">PESQUISAR ↗</button>
+    </div>
+  </section>
+
+  <section class="panel" id="p-CONFIG">
+    <div class="cfg">
+      <h3>CONFIGURAÇÕES</h3>
+      <p>Chave da API Groq (console.groq.com):</p>
+      <div class="sbox"><input id="key" type="password" autocomplete="off" aria-label="Chave da API Groq"><button class="btn" id="ksave">Salvar</button></div>
+      <p id="kmsg" style="min-height:18px"></p>
+      <hr class="hr">
+      <p>Dados:</p>
+      <button class="ghost" id="clear">Limpar histórico de conversa</button>
+      <hr class="hr">
+      <p style="font-size:11px">A chave fica salva só neste navegador (localStorage) e é enviada apenas para api.groq.com.</p>
+    </div>
+  </section>
+</main>
+
+<footer class="bot"><span>↑ histórico · Enter enviar · 🎤 voz</span><span id="clock"></span></footer>
+
+<script>
+const $ = s => document.querySelector(s);
+const D = {key:"",modelo:"openai/gpt-oss-120b",temp:70,tokens:1024,speed:170,hist:true,chat:true,files:true,sites:true,progs:true,vin:true,vout:true};
+let S = {...D};
+try { Object.assign(S, JSON.parse(localStorage.getItem("fatality") || "{}")); } catch (e) {}
+const MODELOS = ["groq"];
+if (!MODELOS.includes(S.modelo)) { S.modelo = D.modelo; S.tokens = Math.max(S.tokens, 1024); }
+const save = () => { try { localStorage.setItem("fatality", JSON.stringify(S)); } catch (e) {} };
+
+const SYSTEM = `Você é o Fatality, assistente pessoal de um furry inteligente, seja sempre claro, você deve ajudar com terefas e coding. Responda sempre em português brasileiro.
+Para ações no computador, responda APENAS com o comando:
+ABRIR_SITE:https://url.com
+PESQUISAR:termos
+ABRIR_PROGRAMA:nome
+CRIAR_ARQUIVO:nome.ext|conteúdo
+ABRIR_PASTA:caminho
+Para conversas normais, responda normalmente em português.`;
+const HIST_MAX = 30;
+let hist = [], cmdHist = [], cmdIdx = -1, busy = false;
+
+/* ── Abas ── */
+function tab(k) {
+  document.querySelectorAll(".panel").forEach(p => p.classList.toggle("on", p.id === "p-" + k));
+  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.t === k));
+}
+$("#tabs").addEventListener("click", e => { const b = e.target.closest(".tab"); if (b) tab(b.dataset.t); });
+
+/* ── Painel Funções ── */
+const tg = (l, k, d) => `<div class="row"><span>${l}</span><label class="tg"><input type="checkbox" data-k="${k}" aria-label="${l}"><i></i></label></div><p class="desc">${d}</p>`;
+const sl = (l, k, min, max, u = "") => `<div class="row"><span>${l}</span><input type="range" data-k="${k}" min="${min}" max="${max}" aria-label="${l}"><b data-v="${k}" data-u="${u}"></b></div>`;
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const TTS = "speechSynthesis" in window;
+$("#cols").innerHTML = `
+<div class="col"><h3>ASSISTENTE</h3>
+  ${tg("Modo Chat","chat","Conversa com IA ativa")}
+  ${tg("Histórico","hist","Mantém contexto da conversa")}
+  <hr class="hr">${sl("Temperatura","temp",0,100,"%")}${sl("Max tokens","tokens",256,4096)}
+  <hr class="hr"><div class="row"><span>Modelo</span><select data-k="modelo" aria-label="Modelo">
+    <option value="openai/gpt-oss-120b">gpt-oss-120b</option>
+    <option value="openai/gpt-oss-20b">gpt-oss-20b</option>
+    <option value="qwen/qwen3.6-27b">qwen3.6-27b</option></select></div>
+</div>
+<div class="col"><h3>AUTOMAÇÃO</h3>
+  ${tg("Abrir Sites","sites","Abre URLs automaticamente")}
+  ${tg("Abrir Programas","progs","Indisponível no navegador")}
+  ${tg("Criar Arquivos","files","Baixa arquivos gerados pela IA")}
+  <hr class="hr"><div style="color:var(--grey);font-size:11px;padding:0 12px 4px">ATALHOS RÁPIDOS</div>
+  <div style="padding:0 12px;display:grid;gap:4px">
+    <button class="ghost" data-cmd="abre o YouTube">↗ YouTube</button>
+    <button class="ghost" data-cmd="abre o Gmail">↗ Gmail</button>
+    <button class="ghost" data-cmd="abre a pasta downloads">↗ Downloads</button>
+  </div>
+</div>
+<div class="col"><h3>VOZ</h3>
+  ${tg("Entrada por voz","vin",SR ? "Microfone ativo" : "Navegador sem reconhecimento de voz")}
+  ${tg("Falar respostas","vout",TTS ? "TTS ativo" : "Navegador sem síntese de voz")}
+  <hr class="hr">${sl("Velocidade voz","speed",80,250)}
+</div>`;
+
+document.querySelectorAll("[data-k]").forEach(el => {
+  const k = el.dataset.k, cb = el.type === "checkbox";
+  const show = () => { const o = document.querySelector(`[data-v="${k}"]`); if (o) o.textContent = S[k] + (o.dataset.u || ""); };
+  if (cb) el.checked = !!S[k]; else el.value = S[k];
+  show();
+  el.addEventListener("input", () => { S[k] = cb ? el.checked : el.type === "range" ? +el.value : el.value; show(); save(); });
+});
+$("#cols").addEventListener("click", e => { const b = e.target.closest("[data-cmd]"); if (b) { tab("CHAT"); cmd(b.dataset.cmd); } });
+
+/* ── Atalhos do chat ── */
+[["YouTube","abre o YouTube"],["Netflix","abre o Netflix"],["Gmail","abre o Gmail"],["WhatsApp Web","abre o WhatsApp"],
+ ["Spotify","abre o Spotify"],["Downloads","abre a pasta downloads"],["Bloco de notas","abre o notepad"],["Calculadora","abre a calculadora"]]
+ .forEach(([l, c]) => { const b = document.createElement("button"); b.className = "sc"; b.textContent = l; b.onclick = () => cmd(c); $("#side").append(b); });
+const lim = document.createElement("button");
+lim.className = "sc"; lim.textContent = "🗑 Limpar"; lim.onclick = limpar;
+const st = document.createElement("div"); st.id = "status"; st.textContent = "● pronto";
+$("#side").append(document.createElement("hr"), lim, st);
+
+/* ── Chat ── */
+function add(tag, text) {
+  const d = document.createElement("div");
+  d.className = "m " + tag; d.textContent = text;
+  $("#chat").append(d); $("#chat").scrollTop = $("#chat").scrollHeight;
+}
+function boasVindas() {
+  add("dim", "━".repeat(40)); add("action", "  FATALITY v4  ·  powered by Groq");
+  add("bot", "  Fale ou digite. Use as abas no topo."); add("dim", "━".repeat(40));
+  if (!S.key) add("warn", "\n  Para começar, cole sua chave Groq na aba CONFIG.");
+}
+const hhmm = () => new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"});
+
+async function groq(msg) {
+  if (!S.key) throw new Error("Chave ausente — vá em CONFIG e informe sua chave Groq");
+  const msgs = [{role: "system", content: SYSTEM}];
+  if (S.hist) hist.forEach(([role, content]) => msgs.push({role, content}));
+  msgs.push({role: "user", content: msg});
+  const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {"Content-Type": "application/json", "Authorization": "Bearer " + S.key},
+    body: JSON.stringify({model: S.modelo, max_tokens: S.tokens, temperature: S.temp / 100, messages: msgs})
+  });
+  if (r.status === 401) throw new Error("Chave inválida — vá em CONFIG e atualize sua chave Groq");
+  if (!r.ok) {
+    let d = ""; try { d = (await r.json()).error.message; } catch (e) {}
+    throw new Error("Groq respondeu " + r.status + (d ? ": " + d : ""));
+  }
+  return (await r.json()).choices[0].message.content;
+}
+
+/* Ações: o navegador só pode abrir sites, pesquisar e baixar arquivos */
+function acao(resp) {
+  const r = resp.trim();
+  const m = r.match(/^(ABRIR_SITE|PESQUISAR|ABRIR_PROGRAMA|CRIAR_ARQUIVO|ABRIR_PASTA):([\s\S]*)$/);
+  if (!m) return [r, "bot"];
+  const c = m[1], a = m[2].trim();
+  const abrir = url => { const w = window.open(url, "_blank"); if (w) w.opener = null; return w; };
+  if (c === "ABRIR_SITE" || c === "PESQUISAR") {
+    if (!S.sites) return ["Abrir sites está desativado em FUNÇÕES.", "warn"];
+    const url = c === "PESQUISAR" ? "https://www.google.com/search?q=" + encodeURIComponent(a) : (/^https?:\/\//i.test(a) ? a : "https://" + a);
+    if (!abrir(url)) return ["O navegador bloqueou o pop-up. Permita pop-ups nesta página e tente de novo.", "warn"];
+    return [(c === "PESQUISAR" ? "Pesquisando → " : "Abrindo → ") + a, "action"];
+  }
+  if (c === "CRIAR_ARQUIVO") {
+    if (!S.files) return ["Criar arquivos está desativado em FUNÇÕES.", "warn"];
+    const i = a.indexOf("|"), nome = ((i < 0 ? a : a.slice(0, i)).trim() || "arquivo.txt").replace(/[\\/:*?"<>|]/g, "_");
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([i < 0 ? "" : a.slice(i + 1).trim()], {type: "text/plain;charset=utf-8"}));
+    link.download = nome; document.body.append(link); link.click(); link.remove();
+    return ["Arquivo baixado → " + nome, "action"];
+  }
+  return ["Navegadores não podem abrir programas ou pastas do computador: " + a, "warn"];
+}
+
+function falar(t) {
+  if (!S.vout || !TTS) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(t.slice(0, 300));
+  u.lang = "pt-BR"; u.rate = S.speed / 170; speechSynthesis.speak(u);
+}
+
+async function enviar(msg, daVoz) {
+  msg = (msg || "").trim();
+  if (busy || !msg) return;
+  if (!S.chat) { add("warn", "Modo Chat desativado em FUNÇÕES."); return; }
+  cmdHist.unshift(msg); cmdIdx = -1;
+  add("hora", "\n" + hhmm()); add("user", (daVoz ? "🎤 " : "") + "Você  »  " + msg);
+  busy = true; $("#send").disabled = true; $("#send").textContent = "...";
+  st.textContent = "● processando"; st.style.color = "var(--yellow)";
+  try {
+    const resp = await groq(msg);
+    hist.push(["user", msg], ["assistant", resp]);
+    hist = hist.slice(-HIST_MAX);
+    const [texto, tag] = acao(resp);
+    add(tag, "Fatality  »  " + texto);
+    falar(texto);
+  } catch (e) {
+    add("error", "[ERRO]  " + (e instanceof TypeError ? "Sem conexão com a Groq" : e.message));
+  } finally {
+    busy = false; $("#send").disabled = false; $("#send").textContent = "ENVIAR";
+    st.textContent = "● pronto"; st.style.color = "var(--green)"; add("dim", "");
+  }
+}
+function cmd(t) { tab("CHAT"); $("#msg").value = ""; enviar(t); }
+function limpar() {
+  if (!confirm("Apagar toda a conversa?")) return;
+  $("#chat").textContent = ""; hist = []; boasVindas();
+}
+
+$("#send").onclick = () => { const v = $("#msg").value; $("#msg").value = ""; enviar(v); };
+$("#msg").addEventListener("keydown", e => {
+  if (e.key === "Enter") { e.preventDefault(); $("#send").click(); }
+  if (e.key === "ArrowUp" && cmdHist.length) {
+    e.preventDefault(); cmdIdx = Math.min(cmdIdx + 1, cmdHist.length - 1); $("#msg").value = cmdHist[cmdIdx];
+  }
+});
+
+/* ── Voz (entrada) ── */
+$("#voz").onclick = () => {
+  if (!SR || !S.vin) { add("warn", "🎤  Entrada por voz indisponível (use Chrome/Edge e ative em FUNÇÕES)."); return; }
+  const rec = new SR(); rec.lang = "pt-BR";
+  rec.onstart = () => { $("#voz").classList.add("rec"); add("voz", "🎤  Ouvindo…"); };
+  rec.onresult = e => enviar(e.results[0][0].transcript, true);
+  rec.onerror = e => add("warn", "🎤  " + (e.error === "no-speech" ? "Não entendi." : "Erro: " + e.error));
+  rec.onend = () => $("#voz").classList.remove("rec");
+  rec.start();
+};
+
+/* ── Calculadora ── */
+let expr = "";
+const KEYS = [["C","f"],["±","f"],["%","f"],["÷","o"],["7"],["8"],["9"],["×","o"],["4"],["5"],["6"],["−","o"],["1"],["2"],["3"],["+","o"],["00"],["0"],["."],["=","e"]];
+KEYS.forEach(([t, c]) => { const b = document.createElement("button"); b.textContent = t; if (c) b.className = c; b.onclick = () => click(t); $("#keys").append(b); });
+const num = s => { const e = s.replace(/÷/g, "/").replace(/×/g, "*").replace(/−/g, "-"); if (!/^[\d+\-*/.() ]+$/.test(e)) throw 0; const v = Function('"use strict";return(' + e + ")")(); if (!isFinite(v)) throw 0; return v; };
+const fmt = v => Number.isInteger(v) ? v : +v.toFixed(8);
+function click(t) {
+  if (t === "C") { expr = ""; $("#cr").textContent = "0"; $("#ce").textContent = ""; }
+  else if (t === "=") {
+    $("#ce").textContent = expr + " =";
+    try { expr = String(fmt(num(expr))); $("#cr").textContent = expr; } catch (e) { $("#cr").textContent = "ERR"; expr = ""; }
+  } else if (t === "±") { expr = expr && !expr.startsWith("-") ? "-" + expr : expr.replace(/^-/, ""); $("#cr").textContent = expr || "0"; }
+  else if (t === "%") { try { expr = String(fmt(num(expr) / 100)); $("#cr").textContent = expr; } catch (e) {} }
+  else { expr += t; $("#cr").textContent = expr; $("#ce").textContent = ""; }
+}
+
+/* ── Pesquisa ── */
+const ENG = {"Google":"https://google.com/search?q=","YouTube":"https://youtube.com/results?search_query=","Wikipedia":"https://pt.wikipedia.org/wiki/Special:Search?search=","Mercado L.":"https://lista.mercadolivre.com.br/","X/Twitter":"https://twitter.com/search?q="};
+$("#engs").innerHTML = Object.keys(ENG).map((n, i) => `<label class="eng"><input type="radio" name="eng" value="${n}"${i ? "" : " checked"}>${n}</label>`).join("");
+function buscar() {
+  const q = $("#q").value.trim(); if (!q) return;
+  const n = document.querySelector("[name=eng]:checked").value;
+  const url = ENG[n] + (n === "Mercado L." ? encodeURIComponent(q).replace(/%20/g, "-") : encodeURIComponent(q));
+  window.open(url, "_blank");
+  add("action", `[PESQUISA]  Pesquisado '${q}' no ${n}`);
+}
+$("#go").onclick = $("#go2").onclick = buscar;
+$("#q").addEventListener("keydown", e => { if (e.key === "Enter") buscar(); });
+
+/* ── Config ── */
+$("#key").value = S.key;
+$("#ksave").onclick = () => {
+  const k = $("#key").value.trim();
+  if (k) { S.key = k; save(); $("#kmsg").style.color = "var(--green)"; $("#kmsg").textContent = "Chave atualizada com sucesso."; }
+  else { $("#kmsg").style.color = "var(--yellow)"; $("#kmsg").textContent = "Chave inválida."; }
+};
+$("#clear").onclick = limpar;
+
+/* ── Relógio ── */
+function tick() {
+  const d = new Date();
+  $("#dt").textContent = d.toLocaleDateString("pt-BR");
+  $("#clock").textContent = d.toLocaleDateString("pt-BR") + "  " + hhmm();
+}
+tick(); setInterval(tick, 30000);
+
+tab("CHAT"); boasVindas(); $("#msg").focus();
+
+    /* ── copyright void ── */
+</script>
+</body>
+</html>
